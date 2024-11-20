@@ -1,7 +1,12 @@
-# 多云的「对象存储 & CDN 成本计算器」
+<div align="center">
+  <h1>多云的成本计算器</h1>
+  <p><a href="https://github.com/bitiful/cloud-prices/blob/main/README_en.md">English</a> | 简体中文</p>
+  <p>多云的「对象存储 & CDN 成本计算器」</p>
+</div>
+
 ### 实时演示
 [https://tools.bitiful.com/prices/index.html](https://tools.bitiful.com/prices/index.html)
-### 图片预览
+### 图片预览（by [https://letscrawl.io/](https://letscrawl.io/)）
 ![cloud-prices](https://github.com/user-attachments/assets/8a1c25b4-550a-4d8b-b938-e551ec862f74)
 ### 亮点：
 - 单文件，离线可用；
