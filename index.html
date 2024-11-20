@@ -1,0 +1,1000 @@
+
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>云服务成本计算器</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        :root {
+            --apple-blue: #007AFF;
+            --apple-gray: #8E8E93;
+            --apple-green: #34C759;
+            --apple-orange: #FF9500;
+            --apple-pink: #FF2D55;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            padding: 20px;
+            background-color: #F5F5F7;
+        }
+        
+        .card {
+            border-radius: 12px;
+            border: none;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            background-color: white;
+            margin-bottom: 20px;
+        }
+        
+        .form-control {
+            border-radius: 8px;
+            border: 1px solid #D1D1D6;
+        }
+        
+        .table {
+            background-color: white;
+            border-radius: 12px;
+        }
+        
+        .container {
+            max-width: 1520px;
+            width: 100%;
+        }
+        
+        .chart-container {
+            background-color: white;
+            border-radius: 12px;
+            padding: 20px;
+        }
+        
+        .table-wrapper {
+            position: relative;
+            overflow-x: auto;
+            scroll-behavior: smooth;
+            -webkit-overflow-scrolling: touch;
+        }
+        
+        .sticky-right {
+            position: sticky;
+            right: 0;
+            background-color: white !important;
+            z-index: 2;
+        }
+        
+        .sticky-left {
+            position: sticky;
+            left: 0;
+            background-color: white !important;
+            z-index: 1;
+        }
+
+        .table-wrapper[data-scrolled="false"] .sticky-left {
+            box-shadow: none !important;
+        }
+
+        .table-wrapper[data-scrolled-end="true"] .sticky-right {
+            box-shadow: none !important;
+        }
+
+        .sticky-left {
+            box-shadow: 8px 0 8px -4px rgba(0, 0, 0, 0.15) !important;
+        }
+
+        .sticky-right {
+            box-shadow: -8px 0 8px -4px rgba(0, 0, 0, 0.15) !important;
+        }
+
+        /* 确保格边框不会遮挡阴影 */
+        .table {
+            border-collapse: separate;
+            border-spacing: 0;
+        }
+
+        .table td {
+            font-weight: 400;
+        }
+
+        .table td:hover {
+            background-color: #dfdfdf !important;
+        }
+
+        .table tr:hover td {
+            font-weight: 600;
+            background-color: #eeeeee;
+        }
+
+        .table tr:hover td.sticky-left,
+        .table tr:hover td.sticky-right {
+            background-color: #eeeeee !important;
+        }
+
+        .d-flex.gap-2.align-items-center {
+            display: flex;
+            gap: 0.75rem;
+            align-items: center;
+        }
+
+        .form-control.w-100px {
+            width: 100px;
+        }
+
+        .form-range.flex-grow-1 {
+            flex-grow: 1;
+        }
+
+        .text-muted.w-30px {
+            width: 30px;
+            text-wrap-mode: nowrap;
+        }
+
+        .slider-tooltip {
+            transform: translateX(-50%);
+            white-space: nowrap;
+        }
+
+        .form-range:active {
+            cursor: grabbing;
+        }
+
+        .form-range::-webkit-slider-thumb:active {
+            cursor: grabbing;
+        }
+
+        .form-range::-moz-range-thumb:active {
+            cursor: grabbing;
+        }
+
+        .form-label {
+            color: #666;
+            font-size: 0.9em;
+        }
+
+        .form-control {
+            height: 32px;
+            padding: 0.25rem 0.5rem;
+            font-size: 0.9em;
+        }
+
+        .form-range {
+            margin-top: 0.5rem;
+        }
+
+        .monospace-numbers {
+            font-family: monospace;
+        }
+
+        .monospace-numbers {
+            font-family: SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+            text-align: right;  /* 数字右对齐 */
+            padding-right: 1rem !important;  /* 确保右边有足够空间 */
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1 class="text-center mb-4">云服务成本计算器</h1>
+        
+        <!-- 用量选择区 -->
+        <div class="card p-4 mb-4">
+            <h3 class="mb-3">用量设置</h3>
+            <div class="row" id="inputFields">
+                <!-- 动态生成输入字段 -->
+            </div>
+        </div>
+
+        <!-- 图表展示区 -->
+        <div class="card p-4 mb-4">
+            <h3 class="mb-3">成本对比</h3>
+            <div class="chart-container" style="height: 350px;">
+                <canvas id="costChart"></canvas>
+            </div>
+        </div>
+
+        <!-- 表格展示区 -->
+        <div class="card p-4">
+            <h3 class="mb-3">详细成本明细</h3>
+            <div class="table-wrapper">
+                <table class="table" id="costTable">
+                    <!-- 动态生成表格内容 -->
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 修改数字格式化函数
+        function formatNumber(number) {
+            // 确保输入是数字
+            const num = parseFloat(number);
+            if (isNaN(num)) return '0.00';
+            
+            // 格式化数字
+            return num.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+        }
+
+        // 配置数据
+        const config = {
+            providers: {
+                缤纷云: {
+                    website: 'https://www.bitiful.com',
+                    storage: {
+                        对象存储存储量: [
+                            { nextTier: 50, price: 0.0 },
+                            { nextTier: 950, price: 0.065 },
+                            { nextTier: 9000, price: 0.055 },
+                            { nextTier: 90000, price: 0.045 },
+                            { nextTier: -1, price: 0.04 },
+                        ],
+                        对象存储直出流量: [
+                            { nextTier: 10, price: 0.0 },
+                            { nextTier: 990, price: 0.12 },
+                            { nextTier: 9000, price: 0.1 },
+                            { nextTier: 90000, price: 0.09 },
+                            { nextTier: -1, price: 0.08 },
+                        ],
+                        对象存储迁移流量: [
+                            { nextTier: 1000, price: 0.12 },
+                            { nextTier: 9000, price: 0.1 },
+                            { nextTier: 90000, price: 0.09 },
+                            { nextTier: -1, price: 0.08 },
+                        ],
+                        对象存储回源流量: [
+                            { nextTier: 10, price: 0.0 },
+                            { nextTier: 990, price: 0.12 },
+                            { nextTier: 9000, price: 0.1 },
+                            { nextTier: 90000, price: 0.09 },
+                            { nextTier: -1, price: 0.08 },
+                        ],
+                        对象存储请求量: [{ nextTier: -1, price: 0.02 }],
+                    },
+                    cdn: {
+                        CDN大陆区域流量: [
+                            { nextTier: 10, price: 0.0 },
+                            { nextTier: 990, price: 0.12 },
+                            { nextTier: 9000, price: 0.1 },
+                            { nextTier: 90000, price: 0.09 },
+                            { nextTier: -1, price: 0.08 },
+                        ],
+                        CDN亚太区域流量: [
+                            { nextTier: 1000, price: 0.18 },
+                            { nextTier: 9000, price: 0.16 },
+                            { nextTier: 90000, price: 0.14 },
+                            { nextTier: -1, price: 0.12 },
+                        ],
+                        CDN欧洲区域流量: [
+                            { nextTier: 1000, price: 0.12 },
+                            { nextTier: 9000, price: 0.1 },
+                            { nextTier: 90000, price: 0.09 },
+                            { nextTier: -1, price: 0.08 },
+                        ],
+                        CDN美洲区域流量: [
+                            { nextTier: 1000, price: 0.12 },
+                            { nextTier: 9000, price: 0.1 },
+                            { nextTier: 90000, price: 0.09 },
+                            { nextTier: -1, price: 0.08 },
+                        ],
+                        CDN其他区域流量: [
+                            { nextTier: 1000, price: 0.12 },
+                            { nextTier: 9000, price: 0.1 },
+                            { nextTier: 90000, price: 0.09 },
+                            { nextTier: -1, price: 0.08 },
+                        ],
+                        CDN所有区域请求: [
+                            { nextTier: -1, price: 0.005 },
+                        ],
+                    },
+                },
+                阿里云: {
+                    website: 'https://www.aliyun.com',
+                    storage: {
+                        对象存储存储量: [{ nextTier: 10, price: 0.12 }],
+                        对象存储直出流量: [
+                            { nextTier: 10, price: 0.5 },
+                            { nextTier: 100, price: 0.5 },
+                            { nextTier: 1000, price: 0.5 },
+                        ],
+                        对象存储迁移流量: [
+                            { nextTier: -1, price: 0.5 },
+                        ],
+                        对象存储回源流量: [
+                            { nextTier: -1, price: 0.15 },
+                        ],
+                        对象存储请求量: [
+                            { nextTier: -1, price: 0.01 },
+                        ],
+                    },
+                    cdn: {
+                        CDN大陆区域流量: [
+                            { nextTier: 10000, price: 0.24 },
+                            { nextTier: 40000, price: 0.23 },
+                            { nextTier: 50000, price: 0.21 },
+                            { nextTier: 100000, price: 0.18 },
+                            { nextTier: -1, price: 0.15 },
+                        ],
+                        CDN亚太区域流量: [
+                            { nextTier: 10000, price: 0.69 },
+                            { nextTier: 40000, price: 0.68 },
+                            { nextTier: 50000, price: 0.39 },
+                            { nextTier: 100000, price: 0.57 },
+                            { nextTier: -1, price: 0.44 },
+                        ],
+                        CDN欧洲区域流量: [
+                            { nextTier: 10000, price: 0.46 },
+                            { nextTier: 40000, price: 0.46 },
+                            { nextTier: 50000, price: 0.39 },
+                            { nextTier: 100000, price: 0.2 },
+                            { nextTier: -1, price: 0.16 },
+                        ],
+                        CDN美洲区域流量: [
+                            { nextTier: 10000, price: 0.46 },
+                            { nextTier: 40000, price: 0.46 },
+                            { nextTier: 50000, price: 0.39 },
+                            { nextTier: 100000, price: 0.2 },
+                            { nextTier: -1, price: 0.16 },
+                        ],
+                        CDN其他区域流量: [
+                            { nextTier: 10000, price: 1.31 },
+                            { nextTier: 40000, price: 1.31 },
+                            { nextTier: 50000, price: 1.18 },
+                            { nextTier: 100000, price: 0.92 },
+                            { nextTier: -1, price: 0.85 },
+                        ],
+                        CDN所有区域请求: [
+                            { nextTier: 10, price: 0.05 },
+                            { nextTier: 100, price: 0.05 },
+                            { nextTier: 1000, price: 0.05 },
+                        ],
+                    },
+                },
+            腾讯云: {
+                    website: 'https://cloud.tencent.com',
+                    storage: {
+                        对象存储存储量: [{ nextTier: 10, price: 0.099 }],
+                        对象存储直出流量: [
+                            { nextTier: -1, price: 0.5 },
+                        ],
+                        对象存储迁移流量: [
+                        { nextTier: -1, price: 0.5 },
+                        ],
+                        对象存储回源流量: [
+                            { nextTier: -1, price: 0.15 },
+                        ],
+                        对象存储请求量: [
+                            { nextTier: -1, price: 0.01 },
+                        ],
+                    },
+                    cdn: {
+                        CDN大陆区域流量: [
+                            { nextTier: 2000, price: 0.21 },
+                            { nextTier: 8000, price: 0.2 },
+                            { nextTier: 40000, price: 0.18 },
+                            { nextTier: 50000, price: 0.15 },
+                            { nextTier: -1, price: 0.11 },
+                        ],
+                        CDN亚太区域流量: [
+                            { nextTier: 10000, price: 0.55 },
+                            { nextTier: 40000, price: 0.61 },
+                            { nextTier: 50000, price: 0.47 },
+                            { nextTier: 100000, price: 0.41 },
+                            { nextTier: -1, price: 0.35 },
+                        ],
+                        CDN欧洲区域流量: [
+                            { nextTier: 10000, price: 0.31 },
+                            { nextTier: 40000, price: 0.26 },
+                            { nextTier: 50000, price: 0.22 },
+                            { nextTier: 100000, price: 0.18 },
+                            { nextTier: -1, price: 0.14 },
+                        ],
+                        CDN美洲区域流量: [
+                            { nextTier: 10000, price: 0.31 },
+                            { nextTier: 40000, price: 0.26 },
+                            { nextTier: 50000, price: 0.22 },
+                            { nextTier: 100000, price: 0.18 },
+                            { nextTier: -1, price: 0.14 },
+                        ],
+                        CDN其他区域流量: [
+                            { nextTier: 10000, price: 0.75 },
+                            { nextTier: 40000, price: 0.7 },
+                            { nextTier: 50000, price: 0.66 },
+                            { nextTier: 100000, price: 0.61 },
+                            { nextTier: -1, price: 0.56 },
+                        ],
+                        CDN所有区域请求: [
+                            { nextTier: 500, price: 0.0 },
+                            { nextTier: -1, price: 0.05 },
+                        ],
+                    },
+                },
+                AWS: {
+                    website: 'https://aws.amazon.com',
+                    storage: {
+                        对象存储存储量: [
+                            { nextTier: 50000, price: 0.1755 },
+                            { nextTier: 450000, price: 0.1719 },
+                            { nextTier: 10000000, price: 0.1629 },
+                        ],
+                        对象存储直出流量: [{ nextTier: 10000000, price: 0.933 }],
+                        对象存储迁移流量: [{ nextTier: 10000000, price: 0.6003 }],
+                        对象存储回源流量: [{ nextTier: 10000000, price: 0.933 }],
+                        对象存储请求量: [{ nextTier: 10, price: 0.014 }],
+                    },
+                    cdn: {
+                        CDN大陆区域流量: [
+                            { nextTier: 10000, price: 0.30866 },
+                            { nextTier: 40000, price: 0.30866 },
+                            { nextTier: 50000, price: 0.30195 },
+                            { nextTier: 900000, price: 0.28853 },
+                            { nextTier: 1000000, price: 0.2 },
+                        ],
+                        CDN亚太区域流量: [
+                            { nextTier: 1000, price: 0.0 },
+                            { nextTier: 10000, price: 0.085 * 7.1 },
+                            { nextTier: 40000, price: 0.08 * 7.1 },
+                            { nextTier: 100000, price: 0.06 * 7.1 },
+                            { nextTier: 350000, price: 0.04 * 7.1 },
+                            { nextTier: 524000, price: 0.03 * 7.1 },
+                            { nextTier: 4000000, price: 0.025 * 7.1 },
+                            { nextTier: 100000000, price: 0.02 * 7.1 },
+                        ],
+                        CDN欧洲区域流量: [
+                            { nextTier: 10000, price: 0.085 * 7.1 },
+                            { nextTier: 40000, price: 0.08 * 7.1 },
+                            { nextTier: 100000, price: 0.06 * 7.1 },
+                            { nextTier: 350000, price: 0.04 * 7.1 },
+                            { nextTier: 524000, price: 0.03 * 7.1 },
+                            { nextTier: 4000000, price: 0.025 * 7.1 },
+                            { nextTier: 100000000, price: 0.02 * 7.1 },
+                        ],
+                        CDN美洲区域流量: [
+                            { nextTier: 10000, price: 0.085 * 7.1 },
+                            { nextTier: 40000, price: 0.08 * 7.1 },
+                            { nextTier: 100000, price: 0.06 * 7.1 },
+                            { nextTier: 350000, price: 0.04 * 7.1 },
+                            { nextTier: 524000, price: 0.03 * 7.1 },
+                            { nextTier: 4000000, price: 0.025 * 7.1 },
+                            { nextTier: 100000000, price: 0.02 * 7.1 },
+                        ],
+                        CDN其他区域流量: [
+                            { nextTier: 10000, price: 0.118 * 7.1 },
+                            { nextTier: 40000, price: 0.096 * 7.1 },
+                            { nextTier: 100000, price: 0.092 * 7.1 },
+                            { nextTier: 350000, price: 0.087 * 7.1 },
+                            { nextTier: 524000, price: 0.08 * 7.1 },
+                            { nextTier: 4000000, price: 0.07 * 7.1 },
+                            { nextTier: 100000000, price: 0.06 * 7.1 },
+                        ],
+                        CDN所有区域请求: [
+                            { nextTier: 10, price: 0.11 },
+                            { nextTier: 100, price: 0.11 },
+                            { nextTier: 1000, price: 0.11 },
+                        ],
+                    },
+                },
+            }
+        };
+
+        // 初始函数
+        function init() {
+            createInputFields();
+            loadUrlParams();
+            updateCalculations();
+            updateUrlParams();
+            initScrollShadows();
+        }
+
+        // 修改获取字段函数，按类型分组
+        function getGroupedFields() {
+            const fields = {
+                存储相关: [],
+                CDN相关: []
+            };
+            
+            for (const provider in config.providers) {
+                // 收集存储相关字段
+                for (const field in config.providers[provider].storage) {
+                    if (!fields.存储相关.includes(field)) {
+                        fields.存储相关.push(field);
+                    }
+                }
+                // 收集CDN相关字段
+                for (const field in config.providers[provider].cdn) {
+                    if (!fields.CDN相关.includes(field)) {
+                        fields.CDN相关.push(field);
+                    }
+                }
+            }
+            
+            return fields;
+        }
+
+        // 修改创建输入字段函数
+        function createInputFields() {
+            const inputContainer = document.getElementById('inputFields');
+            const groupedFields = getGroupedFields();
+            
+            // 清空容器
+            inputContainer.innerHTML = '';
+            
+            // 为每个分组创建字段
+            for (const group in groupedFields) {
+                // 创建分组标题
+                const groupTitle = document.createElement('div');
+                groupTitle.className = 'col-12 mb-3';
+                groupTitle.innerHTML = `<h4 class="text-muted">${group}</h4>`;
+                inputContainer.appendChild(groupTitle);
+                
+                // 创建分组的输入字段
+                groupedFields[group].forEach(field => {
+                    const col = document.createElement('div');
+                    col.className = 'col-md-4 mb-3';
+                    
+                    // 创建上方的 label 和 input 容器
+                    const topRow = document.createElement('div');
+                    topRow.className = 'd-flex justify-content-between align-items-center mb-2';
+
+                    const label = document.createElement('label');
+                    label.className = 'form-label mb-0';  // 移除底部边距
+                    label.textContent = field;
+
+                    // 创建右上角的输入框和单位的容器
+                    const inputUnitGroup = document.createElement('div');
+                    inputUnitGroup.className = 'd-flex align-items-center gap-2';
+
+                    const input = document.createElement('input');
+                    input.type = 'number';
+                    input.className = 'form-control';
+                    input.id = field.replace(/\s+/g, '_');
+                    input.value = 100;
+                    input.min = 0;
+                    input.style.width = '120px';
+
+                    const unitLabel = document.createElement('span');
+                    unitLabel.className = 'text-muted';
+                    unitLabel.style.width = '45px';
+                    unitLabel.textContent = getFieldUnit(field);
+
+                    // 将输入框和单位添加到组中
+                    inputUnitGroup.appendChild(input);
+                    inputUnitGroup.appendChild(unitLabel);
+
+                    // 将 label 和输入组添加到顶部行
+                    topRow.appendChild(label);
+                    topRow.appendChild(inputUnitGroup);
+
+                    // 创建下方的动条容器
+                    const sliderContainer = document.createElement('div');
+                    sliderContainer.className = 'position-relative';
+
+                    const slider = document.createElement('input');
+                    slider.type = 'range';
+                    slider.className = 'form-range w-100';
+                    slider.min = '10';
+                    slider.max = '10000000';
+                    slider.step = '50';
+
+                    // 创建 tooltip
+                    const tooltip = document.createElement('div');
+                    tooltip.className = 'slider-tooltip';
+                    tooltip.style.cssText = `
+                        position: fixed;
+                        background: rgba(0, 0, 0, 0.8);
+                        color: white;
+                        padding: 4px 8px;
+                        border-radius: 4px;
+                        font-size: 12px;
+                        pointer-events: none;
+                        display: none;
+                        z-index: 1000;
+                        transform: translate(-50%, -100%);
+                        margin-top: -8px;
+                    `;
+
+                    // 组装所有元素
+                    sliderContainer.appendChild(slider);
+                    sliderContainer.appendChild(tooltip);
+
+                    col.appendChild(topRow);
+                    col.appendChild(sliderContainer);
+
+                    inputContainer.appendChild(col);
+
+                    let tempValue; // 用于存储滑动过程中的临时值
+
+                    // 输入框值变化时更新滑动条
+                    input.addEventListener('input', () => {
+                        slider.value = input.value;
+                        updateCalculations();
+                        updateUrlParams();
+                    });
+
+                    // 添加一个新的格式化函数，专门用于滑动条的 tooltip
+                    function formatSliderNumber(number) {
+                        // 确保输入是数字
+                        const num = parseFloat(number);
+                        if (isNaN(num)) return '0';
+                        
+                        // 格式化数字（不保留小数）
+                        return Math.round(num).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+                    }
+
+                    // 修改滑动条事件监听部分
+                    slider.addEventListener('mouseover', (e) => {
+                        const rect = slider.getBoundingClientRect();
+                        const thumbPosition = (slider.value - slider.min) / (slider.max - slider.min) * rect.width;
+                        const tooltipX = rect.left + thumbPosition;
+                        const unit = getFieldUnit(field);
+                        tooltip.textContent = `${formatSliderNumber(slider.value)}${unit}`;  // 使用新的格式化函数
+                        tooltip.style.left = `${tooltipX}px`;
+                        tooltip.style.top = `${rect.top}px`;
+                        tooltip.style.display = 'block';
+                    });
+
+                    slider.addEventListener('mouseout', () => {
+                        if (!slider.matches(':active')) {
+                            tooltip.style.display = 'none';
+                        }
+                    });
+
+                    slider.addEventListener('mousedown', (e) => {
+                        tempValue = input.value;
+                        tooltip.style.display = 'block';
+                        const rect = slider.getBoundingClientRect();
+                        const thumbPosition = (slider.value - slider.min) / (slider.max - slider.min) * rect.width;
+                        const tooltipX = rect.left + thumbPosition;
+                        const unit = getFieldUnit(field);
+                        tooltip.textContent = `${formatSliderNumber(slider.value)}${unit}`;  // 使用新的格式化函数
+                        tooltip.style.left = `${tooltipX}px`;
+                        tooltip.style.top = `${rect.top}px`;
+                    });
+
+                    slider.addEventListener('input', (e) => {
+                        const rect = slider.getBoundingClientRect();
+                        const thumbPosition = (e.target.value - slider.min) / (slider.max - slider.min) * rect.width;
+                        const tooltipX = rect.left + thumbPosition;
+                        const unit = getFieldUnit(field);
+                        tooltip.textContent = `${formatSliderNumber(e.target.value)}${unit}`;  // 使用新的格式化函数
+                        tooltip.style.left = `${tooltipX}px`;
+                        tooltip.style.top = `${rect.top}px`;
+                        tooltip.style.display = 'block';
+                    });
+
+                    slider.addEventListener('mouseup', () => {
+                        input.value = slider.value;
+                        if (!slider.matches(':hover')) {
+                            tooltip.style.display = 'none';
+                        }
+                        updateCalculations();
+                        updateUrlParams();
+                    });
+
+                    // 从 URL 参数或默认值设置初始值
+                    const urlParams = new URLSearchParams(window.location.search);
+                    const paramValue = urlParams.get(field.replace(/\s+/g, '_'));
+                    if (paramValue) {
+                        input.value = paramValue;
+                        slider.value = paramValue;
+                    } else {
+                        slider.value = input.value;
+                    }
+                });
+                
+                // 添加分组之间的分隔
+                if (group !== Object.keys(groupedFields).pop()) {
+                    const divider = document.createElement('div');
+                    divider.className = 'col-12';
+                    divider.innerHTML = '<hr class="mb-4">';
+                    inputContainer.appendChild(divider);
+                }
+            }
+        }
+
+        // 从URL加载参数
+        function loadUrlParams() {
+            const urlParams = new URLSearchParams(window.location.search);
+            getAllFields().forEach(field => {
+                const paramValue = urlParams.get(field.replace(/\s+/g, '_'));
+                if (paramValue) {
+                    document.getElementById(field.replace(/\s+/g, '_')).value = paramValue;
+                }
+            });
+        }
+
+        // 计算阶梯价格
+        function calculateTieredPrice(usage, tiers) {
+            let totalCost = 0;
+            let remainingUsage = usage;
+            
+            for (let i = 0; i < tiers.length; i++) {
+                const currentTier = tiers[i];
+                
+                if (remainingUsage <= 0) break;
+                
+                // 如果是无限制阶梯（-1）
+                if (currentTier.nextTier === -1) {
+                    totalCost += remainingUsage * currentTier.price;
+                    break;
+                }
+                
+                // 计算当前档位可用的量
+                const usageInThisTier = Math.min(remainingUsage, currentTier.nextTier);
+                
+                // 计算当前档位费用
+                totalCost += usageInThisTier * currentTier.price;
+                
+                // 更新剩余用量
+                remainingUsage -= usageInThisTier;
+            }
+            
+            // 如果还有剩余用量且最后一个档位不是无限制
+            if (remainingUsage > 0 && tiers.length > 0 && tiers[tiers.length - 1].nextTier !== -1) {
+                totalCost += remainingUsage * tiers[tiers.length - 1].price;
+            }
+            
+            return totalCost;
+        }
+
+        // 更新计算结果
+        function updateCalculations() {
+            const results = {};
+            
+            // 计算每个供应商的成本
+            for (const provider in config.providers) {
+                results[provider] = {
+                    storage: {},
+                    cdn: {},
+                    total: 0
+                };
+                
+                // 计算存储成本
+                for (const field in config.providers[provider].storage) {
+                    const usage = parseFloat(document.getElementById(field.replace(/\s+/g, '_')).value) || 0;
+                    const cost = calculateTieredPrice(usage, config.providers[provider].storage[field]);
+                    results[provider].storage[field] = cost;
+                    results[provider].total += cost;
+                }
+                
+                // 计算CDN成本
+                for (const field in config.providers[provider].cdn) {
+                    const usage = parseFloat(document.getElementById(field.replace(/\s+/g, '_')).value) || 0;
+                    const cost = calculateTieredPrice(usage, config.providers[provider].cdn[field]);
+                    results[provider].cdn[field] = cost;
+                    results[provider].total += cost;
+                }
+            }
+            
+            updateChart(results);
+            updateTable(results);
+        }
+
+        // 更新图表
+        function updateChart(results) {
+            const ctx = document.getElementById('costChart').getContext('2d');
+            const datasets = [];
+            const labels = Object.keys(results);
+            
+            // 为每种费用类型创建数据集
+            const allFields = getAllFields();
+            allFields.forEach((field, index) => {
+                const data = labels.map(provider => {
+                    const category = field in results[provider].storage ? 'storage' : 'cdn';
+                    return results[provider][category][field] || 0;
+                });
+                
+                datasets.push({
+                    label: field,
+                    data: data,
+                    backgroundColor: getColor(index),
+                });
+            });
+            
+            if (window.costChart instanceof Chart) {
+                window.costChart.destroy();
+            }
+            
+            window.costChart = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: labels,
+                    datasets: datasets
+                },
+                options: {
+                    indexAxis: 'y',  // 设置为横向柱状图
+                    responsive: true,
+                    maintainAspectRatio: false,  // 不保持纵横比
+                    scales: {
+                        x: { 
+                            stacked: true,
+                            grid: {
+                                display: true,
+                                color: '#f0f0f0'
+                            },
+                            ticks: {
+                                callback: function(value) {
+                                    return '¥' + formatNumber(value);
+                                }
+                            }
+                        },
+                        y: { 
+                            stacked: true,
+                            grid: {
+                                display: false
+                            }
+                        }
+                    },
+                    plugins: {
+                        tooltip: {
+                            mode: 'index',
+                            intersect: true,
+                            position: 'nearest',
+                            yAlign: 'center',  // 让 tooltip 在柱状图中间显示
+                            xAlign: 'left',    // tooltip 显示在柱状图右侧
+                            caretX: 0,         // 隐藏小箭头
+                            caretY: 0,
+                            callbacks: {
+                                title: function(tooltipItems) {
+                                    if (!tooltipItems.length) return '';
+                                    return tooltipItems[0].label + ' 费用明细';
+                                },
+                                label: function(context) {
+                                    const provider = context.label;
+                                    const field = context.dataset.label;
+                                    const value = context.raw;
+                                    
+                                    if (value === 0) return null;  // 不显示金额为 0 的项目
+                                    
+                                    const totalCost = results[provider].total;
+                                    const percentage = ((value / totalCost) * 100).toFixed(2);
+                                    
+                                    return `${field}: ¥${formatNumber(value)} (${percentage}%)`;
+                                },
+                                footer: function(tooltipItems) {
+                                    if (!tooltipItems.length) return [];
+                                    const provider = tooltipItems[0].label;
+                                    const totalCost = results[provider].total;
+                                    return [
+                                        '',
+                                        `日均: ¥${formatNumber(totalCost / 30)}`,
+                                        `月均: ¥${formatNumber(totalCost)}`,
+                                        `年化: ¥${formatNumber(totalCost * 12)}`
+                                    ];
+                                }
+                            },
+                            displayColors: true,
+                            padding: 10,
+                            titleFont: {
+                                size: 11,
+                                weight: 'bold'
+                            },
+                            bodyFont: {
+                                size: 11
+                            },
+                            footerFont: {
+                                size: 11
+                            }
+                        },
+                        legend: {
+                            position: 'right',  // 图例位置改到右侧
+                            labels: {
+                                boxWidth: 12,  // 图例标记的大小
+                                padding: 10    // 图例项之间的间距
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        // 更新表格
+        function updateTable(results) {
+            const table = document.getElementById('costTable');
+            const fields = getAllFields();
+            
+            let html = `
+                <thead>
+                    <tr style="font-size: 0.7em; white-space: nowrap;">
+                        <th class="sticky-left">供应商</th>
+                        ${fields.map(field => `<th>${field}</th>`).join('')}
+                        <th>日费用</th>
+                        <th>月费用</th>
+                        <th class="sticky-right">年费用</th>
+                    </tr>
+                </thead>
+                <tbody style="font-size: 0.7em; white-space: nowrap;">
+            `;
+            
+            for (const provider in results) {
+                html += `<tr>
+                    <td class="sticky-left">
+                        <a href="${config.providers[provider].website}" 
+                           target="_blank" 
+                           style="text-decoration: none; color: inherit;">
+                            ${provider}
+                            <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" fill="currentColor" class="bi bi-box-arrow-up-right" viewBox="0 0 16 16" style="margin-left: 4px;">
+                                <path fill-rule="evenodd" d="M8.636 3.5a.5.5 0 0 0-.5-.5H1.5A1.5 1.5 0 0 0 0 4.5v10A1.5 1.5 0 0 0 1.5 16h10a1.5 1.5 0 0 0 1.5-1.5V7.864a.5.5 0 0 0-1 0V14.5a.5.5 0 0 1-.5.5h-10a.5.5 0 0 1-.5-.5v-10a.5.5 0 0 1 .5-.5h6.636a.5.5 0 0 0 .5-.5z"/>
+                                <path fill-rule="evenodd" d="M16 .5a.5.5 0 0 0-.5-.5h-5a.5.5 0 0 0 0 1h3.793L6.146 9.146a.5.5 0 1 0 .708.708L15 1.707V5.5a.5.5 0 0 0 1 0v-5z"/>
+                            </svg>
+                        </a>
+                    </td>
+                    ${fields.map(field => {
+                        const category = field in results[provider].storage ? 'storage' : 'cdn';
+                        const value = results[provider][category][field] || 0;
+                        return `<td class="monospace-numbers">¥${formatNumber(value)}</td>`;
+                    }).join('')}
+                    <td class="monospace-numbers">¥${formatNumber(results[provider].total / 30)}</td>
+                    <td class="monospace-numbers">¥${formatNumber(results[provider].total)}</td>
+                    <td class="sticky-right monospace-numbers">¥${formatNumber(results[provider].total * 12)}</td>
+                </tr>`;
+            }
+            
+            html += '</tbody>';
+            table.innerHTML = html;
+        }
+
+        // 获取颜色
+        function getColor(index) {
+            const colors = [
+                '#007AFF', '#34C759', '#FF9500', '#FF2D55', '#AF52DE',
+                '#5856D6', '#FF2D55', '#5AC8FA', '#FFCC00', '#FF3B30'
+            ];
+            return colors[index % colors.length];
+        }
+
+        // 更新 URL 参数的函数
+        function updateUrlParams() {
+            const fields = getAllFields();
+            const params = new URLSearchParams();
+            
+            fields.forEach(field => {
+                const value = document.getElementById(field.replace(/\s+/g, '_')).value;
+                params.set(field.replace(/\s+/g, '_'), value);
+            });
+            
+            // 更新 URL，不刷新页面
+            const newUrl = `${window.location.pathname}?${params.toString()}`;
+            window.history.pushState({ path: newUrl }, '', newUrl);
+        }
+
+        // 添加滚动监听函数
+        function initScrollShadows() {
+            const wrapper = document.querySelector('.table-wrapper');
+            
+            function updateShadows() {
+                // 检查是否滚动到最左侧
+                wrapper.setAttribute('data-scrolled', wrapper.scrollLeft > 0);
+                
+                // 检查是否滚动到最右侧
+                const isAtEnd = Math.abs(wrapper.scrollWidth - wrapper.clientWidth - wrapper.scrollLeft) < 1;
+                wrapper.setAttribute('data-scrolled-end', isAtEnd);
+            }
+            
+            // 初始化时调用一次
+            updateShadows();
+            
+            // 监听滚动事件
+            wrapper.addEventListener('scroll', updateShadows);
+        }
+
+        // 添加一个函数来判断字段的单位
+        function getFieldUnit(field) {
+            if (field.includes('请求')) {
+                return '万次';
+            } else {
+                return 'GB';
+            }
+        }
+
+        // 修改获取所有字段函数
+        function getAllFields() {
+            const groupedFields = getGroupedFields();
+            return Object.values(groupedFields).flat();
+        }
+
+        // 初始化
+        init();
+    </script>
+</body>
+</html> 
